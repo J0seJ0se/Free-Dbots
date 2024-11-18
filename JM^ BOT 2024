@@ -1,0 +1,84 @@
+# Reload the XML file again and ensure changes are minimal and compliant with Deriv's standards
+tree = ET.parse(file_path)
+root = tree.getroot()
+
+# Identify the variables section directly by inspecting the original structure
+variables_section = root.find(".//variables")
+
+# Add variables for "Consecutive Losses" and "Current Trade" only if they don't exist
+if variables_section is not None:
+    existing_var_names = [var.text for var in variables_section.findall("variable")]
+    
+    if "Consecutive Losses" not in existing_var_names:
+        ET.SubElement(variables_section, 'variable', {'type': '', 'id': 'consecutive_losses'}).text = "Consecutive Losses"
+    if "Current Trade" not in existing_var_names:
+        ET.SubElement(variables_section, 'variable', {'type': '', 'id': 'current_trade'}).text = "Current Trade"
+
+# Locate the after_purchase logic section
+after_purchase_stack = root.find(".//block[@type='after_purchase']/statement[@name='AFTERPURCHASE_STACK']")
+
+# Add a logic block to track consecutive losses and switch trade direction
+if after_purchase_stack is not None:
+    loss_switch_block = ET.Element('block', {
+        'type': 'controls_if',
+        'id': 'switch_trade_direction'
+    })
+
+    mutation = ET.SubElement(loss_switch_block, 'mutation', {'else': '1'})
+    condition = ET.SubElement(loss_switch_block, 'value', {'name': 'IF0'})
+    logic_compare = ET.SubElement(condition, 'block', {'type': 'logic_compare', 'id': 'check_losses'})
+    ET.SubElement(logic_compare, 'field', {'name': 'OP'}).text = 'EQ'
+
+    # Compare "Consecutive Losses" to 2
+    var_a = ET.SubElement(logic_compare, 'value', {'name': 'A'})
+    var_block = ET.SubElement(var_a, 'block', {'type': 'variables_get', 'id': 'get_consecutive_losses'})
+    ET.SubElement(var_block, 'field', {
+        'name': 'VAR',
+        'id': 'consecutive_losses',
+        'variabletype': ''
+    }).text = "Consecutive Losses"
+
+    var_b = ET.SubElement(logic_compare, 'value', {'name': 'B'})
+    num_block = ET.SubElement(var_b, 'block', {'type': 'math_number', 'id': 'compare_to_2'})
+    ET.SubElement(num_block, 'field', {'name': 'NUM'}).text = '2'
+
+    # Switch trade direction
+    do0 = ET.SubElement(loss_switch_block, 'statement', {'name': 'DO0'})
+    set_trade = ET.SubElement(do0, 'block', {'type': 'variables_set', 'id': 'toggle_trade_direction'})
+    ET.SubElement(set_trade, 'field', {
+        'name': 'VAR',
+        'id': 'current_trade',
+        'variabletype': ''
+    }).text = "Current Trade"
+
+    value = ET.SubElement(set_trade, 'value', {'name': 'VALUE'})
+    negate_block = ET.SubElement(value, 'block', {'type': 'logic_negate', 'id': 'negate_trade_direction'})
+    current_val = ET.SubElement(negate_block, 'value', {'name': 'BOOL'})
+    current_trade_get = ET.SubElement(current_val, 'block', {'type': 'variables_get', 'id': 'get_trade_direction'})
+    ET.SubElement(current_trade_get, 'field', {
+        'name': 'VAR',
+        'id': 'current_trade',
+        'variabletype': ''
+    }).text = "Current Trade"
+
+    # Reset "Consecutive Losses"
+    next_action = ET.SubElement(set_trade, 'next')
+    reset_losses = ET.SubElement(next_action, 'block', {'type': 'variables_set', 'id': 'reset_consecutive_losses'})
+    ET.SubElement(reset_losses, 'field', {
+        'name': 'VAR',
+        'id': 'consecutive_losses',
+        'variabletype': ''
+    }).text = "Consecutive Losses"
+
+    reset_value = ET.SubElement(reset_losses, 'value', {'name': 'VALUE'})
+    zero_reset = ET.SubElement(reset_value, 'block', {'type': 'math_number', 'id': 'reset_to_zero'})
+    ET.SubElement(zero_reset, 'field', {'name': 'NUM'}).text = '0'
+
+    # Append the block to the after purchase stack
+    after_purchase_stack.append(loss_switch_block)
+
+# Save the minimally edited XML
+final_file_path = "/mnt/data/TRADE_CITY_BOT_Version_1.2_edited.xml"
+tree.write(final_file_path)
+
+final_file_path
